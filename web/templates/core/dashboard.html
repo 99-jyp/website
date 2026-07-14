@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% block title %}대시보드 – Hospital AI{% endblock %}
+{% block page_title %}대시보드{% endblock %}
+
+{% block extra_css %}
+<style>
+  .table th {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: #64748b;
+  }
+
+  .leave-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Stats row ─────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-val text-primary">{{ total }}</div>
+          <div class="stat-lbl">전체 직원</div>
+        </div>
+        <div class="stat-icon bg-primary bg-opacity-10">
+          <i class="fas fa-users text-primary" style="font-size:15px"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-val text-success">{{ avg_leave }}</div>
+          <div class="stat-lbl">평균 연차 (일)</div>
+        </div>
+        <div class="stat-icon bg-success bg-opacity-10">
+          <i class="fas fa-calendar-check text-success" style="font-size:15px"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-val {% if low_leave %}text-danger{% else %}text-muted{% endif %}">{{ low_leave }}</div>
+          <div class="stat-lbl">연차 부족 (5일 미만)</div>
+        </div>
+        <div class="stat-icon bg-danger bg-opacity-10">
+          <i class="fas fa-triangle-exclamation text-danger" style="font-size:15px"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="stat-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-val text-info" id="js-dept-count">–</div>
+          <div class="stat-lbl">부서 수</div>
+        </div>
+        <div class="stat-icon bg-info bg-opacity-10">
+          <i class="fas fa-building text-info" style="font-size:15px"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Charts + Quick Actions ────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header"><span class="fw-semibold small">부서별 직원 수</span></div>
+      <div class="card-body d-flex align-items-center justify-content-center" style="min-height:200px">
+        <canvas id="deptChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header"><span class="fw-semibold small">부서별 평균 연차</span></div>
+      <div class="card-body d-flex align-items-center justify-content-center" style="min-height:200px">
+        <canvas id="leaveChart"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-header"><span class="fw-semibold small">빠른 작업</span></div>
+      <div class="card-body d-grid gap-2">
+        <a href="{% url 'chat' %}" class="btn btn-primary btn-sm">
+          <i class="fas fa-robot me-1"></i> AI 채팅 열기
+        </a>
+        <button class="btn btn-outline-success btn-sm" onclick="generateReport()">
+          <i class="fas fa-file-lines me-1"></i> 휴가 현황 리포트
+        </button>
+        <a href="/admin/core/employee/add/" target="_blank" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-user-plus me-1"></i> 직원 직접 등록
+        </a>
+        <button class="btn btn-outline-info btn-sm" onclick="location.reload()">
+          <i class="fas fa-rotate me-1"></i> 새로고침
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Employee Table ────────────────────────────────────── -->
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small">직원 목록</span>
+    <span class="badge bg-secondary" style="font-size:11px">{{ total }}명</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" style="font-size:13px">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">사번</th>
+            <th>이름</th>
+            <th>부서</th>
+            <th>연차</th>
+            <th>상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees %}
+          <tr>
+            <td class="ps-3 text-muted">{{ emp.employee_no }}</td>
+            <td class="fw-semibold">{{ emp.name }}</td>
+            <td><span class="badge bg-light text-dark border">{{ emp.department }}</span></td>
+            <td class="fw-semibold
+              {% if emp.leave_days < 5 %}text-danger
+              {% elif emp.leave_days < 10 %}text-warning
+              {% else %}text-success{% endif %}">
+              {{ emp.leave_days }}일
+            </td>
+            <td>
+              {% if emp.leave_days < 5 %} <span class="leave-badge bg-danger text-white"><i
+                  class="fas fa-exclamation-circle me-1"></i>부족</span>
+                {% elif emp.leave_days < 10 %} <span class="leave-badge bg-warning text-dark">주의</span>
+                  {% else %}
+                  <span class="leave-badge bg-success text-white">정상</span>
+                  {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-5">직원 데이터가 없습니다.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── v5.0 Anomaly Alerts ───────────────────────────────── -->
+{% if low_leave %}
+<div class="alert alert-danger d-flex align-items-start gap-2 mb-4" style="font-size:13px">
+  <i class="fas fa-triangle-exclamation mt-1"></i>
+  <div>
+    <strong>연차 부족 직원 감지 (v5.0 이상 감지)</strong><br>
+    연차가 5일 미만인 직원이 <strong>{{ low_leave }}명</strong> 있습니다.
+    AI 채팅에서 <em>"연차 부족 직원 목록 알려줘"</em>라고 물어보세요.
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Recent Notifications ──────────────────────────────── -->
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold small">최근 알림</span>
+    {% if unread_count %}
+    <span class="badge bg-danger" style="font-size:10px">{{ unread_count }}건 미읽음</span>
+    {% endif %}
+  </div>
+  <div class="card-body p-0">
+    {% for n in recent_notifications %}
+    <div class="px-3 py-2 border-bottom d-flex align-items-center gap-2 {% if not n.is_read %}bg-light{% endif %}"
+      style="font-size:12px">
+      <span
+        class="badge bg-{% if n.level == 'success' %}success{% elif n.level == 'warning' %}warning text-dark{% elif n.level == 'danger' %}danger{% else %}info{% endif %}"
+        style="font-size:9px">&nbsp;</span>
+      <span class="flex-grow-1">{{ n.message }}</span>
+      <span class="text-muted flex-shrink-0">{{ n.created_at|date:"m/d H:i" }}</span>
+    </div>
+    {% empty %}
+    <div class="text-center text-muted py-4 small">알림이 없습니다.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1200">
+  <div id="toast" class="toast align-items-center text-bg-success" role="alert">
+    <div class="d-flex">
+      <div class="toast-body small" id="toast-body">완료</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+  let deptChart, leaveChart;
+
+  function loadStats() {
+    fetch('/api/stats/')
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById('js-dept-count').textContent = d.dept_count;
+        const labels = d.departments.map(x => x.department || '미지정');
+        const counts = d.departments.map(x => x.count);
+        const avgLeaves = d.departments.map(x => x.avg_leave);
+        const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#64748b'];
+
+        if (deptChart) deptChart.destroy();
+        deptChart = new Chart(document.getElementById('deptChart'), {
+          type: 'doughnut',
+          data: { labels, datasets: [{ data: counts, backgroundColor: COLORS, borderWidth: 2 }] },
+          options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } } }
+        });
+
+        if (leaveChart) leaveChart.destroy();
+        leaveChart = new Chart(document.getElementById('leaveChart'), {
+          type: 'bar',
+          data: { labels, datasets: [{ label: '평균 연차', data: avgLeaves, backgroundColor: '#3b82f688', borderColor: '#3b82f6', borderWidth: 1 }] },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, grid: { color: '#f0f0f0' } }, x: { ticks: { font: { size: 10 } } } }
+          }
+        });
+      });
+  }
+
+  function generateReport() {
+    fetch('/api/report/', { method: 'POST', headers: { 'X-CSRFToken': getCsrf() } })
+      .then(r => r.json())
+      .then(d => {
+        const t = new bootstrap.Toast(document.getElementById('toast'));
+        document.getElementById('toast-body').textContent =
+          d.success ? `리포트 생성 완료: ${d.file_path}` : (d.message || '오류');
+        if (!d.success) document.getElementById('toast').classList.replace('text-bg-success', 'text-bg-danger');
+        t.show();
+      });
+  }
+
+  loadStats();
+  setInterval(loadStats, 30000);
+</script>
+{% endblock %}

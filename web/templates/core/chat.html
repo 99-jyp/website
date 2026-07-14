@@ -1,0 +1,285 @@
+{% extends 'base.html' %}
+{% block title %}AI 채팅 – Hospital AI{% endblock %}
+{% block page_title %}AI 채팅{% endblock %}
+
+{% block extra_css %}
+<style>
+  .chat-wrap {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 140px);
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+  }
+
+  .msg {
+    margin-bottom: 14px;
+  }
+
+  .msg.user {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .msg.ai {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .bubble {
+    max-width: 72%;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .msg.user .bubble {
+    background: #3b82f6;
+    color: #fff;
+    border-radius: 18px 18px 4px 18px;
+  }
+
+  .msg.ai .bubble {
+    background: #fff;
+    color: #1e293b;
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+  }
+
+  .msg-time {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 3px;
+    padding: 0 4px;
+  }
+
+  .msg.user .msg-time {
+    text-align: right;
+  }
+
+  /* Typing dots */
+  .typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 14px;
+    background: #fff;
+    border-radius: 18px 18px 18px 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+  }
+
+  .typing-dots span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background: #94a3b8;
+    border-radius: 50%;
+    animation: dot 1.2s infinite;
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: .2s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: .4s;
+  }
+
+  @keyframes dot {
+
+    0%,
+    80%,
+    100% {
+      transform: translateY(0)
+    }
+
+    40% {
+      transform: translateY(-5px)
+    }
+  }
+
+  /* Input */
+  .chat-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px 0 0;
+  }
+
+  .chat-input {
+    flex: 1;
+    border-radius: 24px;
+    padding: 10px 18px;
+    border: 1px solid #e2e8f0;
+    font-size: 13.5px;
+    outline: none;
+    transition: border-color .2s;
+  }
+
+  .chat-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, .1);
+  }
+
+  .send-btn {
+    border-radius: 24px;
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+
+  /* Quick commands */
+  .quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 0 0;
+  }
+
+  .qcmd {
+    font-size: 11.5px;
+    padding: 4px 10px;
+    border-radius: 14px;
+    cursor: pointer;
+    background: #e2e8f0;
+    border: none;
+    color: #475569;
+    transition: background .15s;
+  }
+
+  .qcmd:hover {
+    background: #cbd5e1;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <div class="col-lg-9 col-xl-8 mx-auto">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+          <span class="bg-success rounded-circle d-inline-block" style="width:8px;height:8px"></span>
+          <span class="fw-semibold small">Hospital AI Agent</span>
+          <span class="text-muted" style="font-size:11px">qwen3:4b · Ollama</span>
+        </div>
+        <button class="btn btn-sm btn-light" onclick="clearChat()">
+          <i class="fas fa-trash-can me-1" style="font-size:11px"></i>초기화
+        </button>
+      </div>
+
+      <div class="card-body p-3">
+        <div class="chat-wrap">
+          <div class="chat-messages" id="chatMsgs">
+            {% if not history %}
+            <div class="text-center text-muted py-5" id="emptyState">
+              <i class="fas fa-robot fa-3x text-primary opacity-25 mb-3"></i>
+              <p class="fw-semibold mb-1">Hospital AI에 무엇이든 물어보세요</p>
+              <p class="small mb-0">직원 관리, 연차, 파일 생성, 리포트 등을 처리합니다.</p>
+            </div>
+            {% endif %}
+
+            {% for m in history %}
+            <div class="msg {{ m.role }}">
+              <div>
+                <div class="bubble">{{ m.content }}</div>
+                <div class="msg-time">{% if m.role == 'user' %}나{% else %}AI{% endif %}</div>
+              </div>
+            </div>
+            {% endfor %}
+
+            <!-- typing indicator (hidden by default) -->
+            <div class="msg ai" id="typingMsg" style="display:none">
+              <div class="typing-dots"><span></span><span></span><span></span></div>
+            </div>
+          </div>
+
+          <div class="quick-row" id="quickRow">
+            <button class="qcmd" onclick="sq('홍길동 조회')">홍길동 조회</button>
+            <button class="qcmd" onclick="sq('김민수를 원무과로 등록해')">직원 등록</button>
+            <button class="qcmd" onclick="sq('홍길동 연차 2일 차감')">연차 차감</button>
+            <button class="qcmd" onclick="sq('홍길동 부서를 총무과로 변경')">부서 변경</button>
+            <button class="qcmd" onclick="sq('직원 명단 엑셀 생성해')">엑셀 생성</button>
+            <button class="qcmd" onclick="sq('지금 휴가 현황 리포트 만들어줘')">리포트 생성</button>
+          </div>
+
+          <div class="chat-input-row">
+            <input type="text" id="msgInput" class="chat-input" placeholder="메시지를 입력하세요… (Enter 전송)"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){send();event.preventDefault();}">
+            <button class="btn btn-primary send-btn" id="sendBtn" onclick="send()">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const chatMsgs = document.getElementById('chatMsgs');
+  const msgInput = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const typing = document.getElementById('typingMsg');
+
+  function scroll() { chatMsgs.scrollTop = chatMsgs.scrollHeight; }
+
+  function appendMsg(role, text) {
+    const empty = document.getElementById('emptyState');
+    if (empty) empty.remove();
+    const d = document.createElement('div');
+    d.className = `msg ${role}`;
+    const safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    d.innerHTML = `<div><div class="bubble">${safe}</div><div class="msg-time">${role === 'user' ? '나' : 'AI'}</div></div>`;
+    chatMsgs.insertBefore(d, typing);
+    scroll();
+  }
+
+  function send() {
+    const msg = msgInput.value.trim();
+    if (!msg) return;
+
+    document.getElementById('quickRow').style.display = 'none';
+    appendMsg('user', msg);
+    msgInput.value = '';
+    msgInput.disabled = sendBtn.disabled = true;
+    typing.style.display = 'flex';
+    scroll();
+
+    fetch('/api/chat/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ message: msg })
+    })
+      .then(r => r.json())
+      .then(d => appendMsg('ai', d.answer || d.error || '오류가 발생했습니다.'))
+      .catch(() => appendMsg('ai', 'AI 연결 오류가 발생했습니다.'))
+      .finally(() => {
+        typing.style.display = 'none';
+        msgInput.disabled = sendBtn.disabled = false;
+        msgInput.focus();
+        updateNotifBadge();
+      });
+  }
+
+  function sq(text) { msgInput.value = text; send(); }
+
+  function clearChat() {
+    if (!confirm('대화 내역을 삭제하시겠습니까?')) return;
+    fetch('/api/chat/clear/', { method: 'POST', headers: { 'X-CSRFToken': getCsrf() } })
+      .then(() => location.reload());
+  }
+
+  scroll();
+  msgInput.focus();
+</script>
+{% endblock %}
